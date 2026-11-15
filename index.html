@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mi Teleprompter Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Teleprompter">
+<meta name="theme-color" content="#0b0b0f">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{
+  --bg:#0b0b0f; --panel:rgba(24,24,30,.94); --panel2:#1f1f27; --line:rgba(255,255,255,.09);
+  --txt:#f5f5f7; --mut:#9b9ba6; --acc:#f2c46d; --acc2:#e0a944; --rec:#ff3b30; --ok:#34c759;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+input,textarea{font:inherit;color:inherit}
+.hidden{display:none!important}
+
+/* ---------- Escenario 9:16 ---------- */
+#app{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;padding-top:var(--st);background:#000}
+#stage{position:relative;width:min(100vw, calc((100dvh - var(--st) - var(--sb)) * 9 / 16));aspect-ratio:9/16;
+  max-height:calc(100dvh - var(--st) - var(--sb));overflow:hidden;background:#111;border-radius:14px}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
+#cam.mirror{transform:scaleX(-1)}
+#demoBg{position:absolute;inset:0;background:
+  radial-gradient(60% 40% at 50% 46%,#3a3a48 0,#1b1b22 60%,#0f0f14 100%)}
+#demoBg::after{content:"";position:absolute;left:50%;top:44%;width:42%;aspect-ratio:1/1.15;transform:translate(-50%,-50%);
+  border-radius:48% 48% 40% 40%;background:rgba(255,255,255,.05);box-shadow:0 260px 0 70px rgba(255,255,255,.04)}
+#demoTag{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);font-size:12px;color:var(--mut);
+  background:rgba(0,0,0,.45);padding:6px 10px;border-radius:20px;white-space:nowrap}
+
+/* ---------- Teleprompter ---------- */
+#prompter{position:absolute;left:0;right:0;top:0;height:38%;z-index:5;touch-action:none}
+#ptBg{position:absolute;inset:0;background:#000;opacity:.55}
+#ptView{position:absolute;inset:0;overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 14%,#000 82%,transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 14%,#000 82%,transparent 100%)}
+#ptText{position:absolute;left:0;right:0;top:0;will-change:transform;white-space:pre-wrap;word-wrap:break-word;
+  font-weight:600;letter-spacing:.005em;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#ptText.flip{transform-origin:center}
+#guide{position:absolute;left:0;right:0;height:0;pointer-events:none;z-index:2}
+#guide::before,#guide::after{content:"";position:absolute;top:-9px;border:9px solid transparent}
+#guide::before{left:0;border-left-color:var(--acc)}
+#guide::after{right:0;border-right-color:var(--acc)}
+#guide i{position:absolute;left:18px;right:18px;top:0;border-top:1px dashed rgba(242,196,109,.35)}
+#ptProg{position:absolute;left:0;bottom:0;height:3px;background:var(--acc);width:0;opacity:.9}
+#ptHint{position:absolute;right:10px;top:8px;font-size:11px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.4);
+  padding:4px 8px;border-radius:12px;pointer-events:none;transition:opacity .4s}
+
+/* ---------- Estado de grabación ---------- */
+#recBadge{position:absolute;left:50%;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:7px;
+  background:rgba(0,0,0,.6);padding:6px 12px;border-radius:20px;font-weight:600;font-variant-numeric:tabular-nums;font-size:15px}
+#recBadge b{width:10px;height:10px;border-radius:50%;background:var(--rec);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+#countdown{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35)}
+#countdown span{font-size:150px;font-weight:800;color:#fff;text-shadow:0 6px 30px rgba(0,0,0,.6);animation:pop 1s ease-out}
+@keyframes pop{0%{transform:scale(1.6);opacity:0}25%{opacity:1}100%{transform:scale(.85);opacity:.9}}
+
+/* ---------- Controles ---------- */
+#controls{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:0 12px calc(10px + var(--sb));
+  background:linear-gradient(to top,rgba(0,0,0,.82) 0,rgba(0,0,0,.55) 65%,transparent 100%)}
+#quick{display:flex;justify-content:center;gap:10px;margin-bottom:10px}
+.chip{display:flex;align-items:center;background:rgba(40,40,48,.85);border:1px solid var(--line);border-radius:22px;height:40px;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.chip button{width:44px;height:40px;font-size:20px;font-weight:600}
+.chip span{min-width:62px;text-align:center;font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
+.chip span b{color:var(--txt);font-size:15px}
+#mainbar{display:flex;align-items:center;justify-content:space-between;max-width:440px;margin:0 auto}
+.rb{width:56px;height:56px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(40,40,48,.85);border:1px solid var(--line);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.rb svg{width:24px;height:24px}
+.rb small{font-size:9.5px;color:var(--mut);margin-top:1px}
+.lbl{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:var(--mut)}
+#recBtn{width:82px;height:82px;border-radius:50%;border:4px solid #fff;display:flex;align-items:center;justify-content:center;background:transparent}
+#recBtn i{display:block;width:64px;height:64px;border-radius:50%;background:var(--rec);transition:all .25s}
+#recBtn.on i{width:30px;height:30px;border-radius:7px}
+#recBtn:disabled{opacity:.5}
+.dim{opacity:.35;pointer-events:none}
+
+/* ---------- Hojas (paneles inferiores) ---------- */
+.sheetWrap{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;
+  animation:fade .2s}
+@keyframes fade{from{opacity:0}}
+.sheet{width:100%;max-width:560px;max-height:88dvh;background:var(--panel);border-radius:22px 22px 0 0;border-top:1px solid var(--line);
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);display:flex;flex-direction:column;animation:up .25s ease-out;
+  padding-bottom:var(--sb)}
+@keyframes up{from{transform:translateY(40px);opacity:.4}}
+.sh-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px}
+.sh-head h2{margin:0;font-size:19px;font-weight:700}
+.sh-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 18px;-webkit-user-select:text;user-select:text}
+.x{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.1);font-size:17px}
+.btn{height:50px;border-radius:14px;padding:0 18px;font-weight:600;font-size:16px;background:rgba(255,255,255,.1);display:inline-flex;
+  align-items:center;justify-content:center;gap:8px}
+.btn.pri{background:var(--acc);color:#1b1404}
+.btn.red{background:rgba(255,59,48,.16);color:#ff6a61}
+.btn.full{width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grp{background:var(--panel2);border-radius:16px;padding:4px 14px;margin-bottom:14px}
+.grp h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:14px 2px 6px;font-weight:600}
+.set{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;border-bottom:1px solid var(--line)}
+.set:last-child{border-bottom:0}
+.set label{font-size:15.5px}
+.set .v{color:var(--acc);font-variant-numeric:tabular-nums;font-size:14px;min-width:40px;text-align:right}
+.set.col{flex-direction:column;align-items:stretch;padding:10px 0;gap:8px}
+.set.col>div{display:flex;justify-content:space-between}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:30px;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:rgba(255,255,255,.18)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;margin-top:-10.5px;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.seg{display:flex;background:rgba(255,255,255,.08);border-radius:10px;padding:3px}
+.seg button{flex:1;height:34px;border-radius:8px;font-size:14px;color:var(--mut);padding:0 10px}
+.seg button.on{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.tg{position:relative;width:51px;height:31px;flex:none}
+.tg input{opacity:0;width:0;height:0;position:absolute}
+.tg span{position:absolute;inset:0;border-radius:16px;background:rgba(255,255,255,.18);transition:.2s}
+.tg span::after{content:"";position:absolute;left:2px;top:2px;width:27px;height:27px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 2px 4px rgba(0,0,0,.3)}
+.tg input:checked+span{background:var(--ok)}
+.tg input:checked+span::after{transform:translateX(20px)}
+.note{font-size:13px;color:var(--mut);line-height:1.45;margin:6px 2px 12px}
+.note b{color:var(--txt)}
+
+/* Guiones */
+.scr{display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:16px;padding:12px 12px 12px 14px;margin-bottom:10px;border:1.5px solid transparent}
+.scr.act{border-color:var(--acc)}
+.scr .i{flex:1;min-width:0}
+.scr .t{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr .p{font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.scr .m{font-size:12px;color:var(--acc);margin-top:4px}
+.ib{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;flex:none}
+.ib svg{width:20px;height:20px}
+#edTitle{width:100%;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);padding:0 14px;font-size:17px;font-weight:600;margin-bottom:10px;outline:none}
+#edText{width:100%;min-height:42dvh;border-radius:12px;border:1px solid var(--line);background:var(--panel2);padding:14px;font-size:17px;line-height:1.5;resize:none;outline:none}
+#edTitle:focus,#edText:focus{border-color:var(--acc)}
+.edbar{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
+.edbar .btn{height:40px;font-size:14px;padding:0 12px}
+#edStats{font-size:13px;color:var(--mut);margin-left:auto;align-self:center}
+
+/* Toma / resultado */
+#resVideo{width:100%;max-height:52dvh;border-radius:14px;background:#000;display:block;margin-bottom:12px}
+.meta{font-size:13px;color:var(--mut);margin:0 2px 12px;text-align:center}
+.take{display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:14px;padding:12px;margin-bottom:8px}
+.take .i{flex:1}
+.take .t{font-weight:600}
+.take .p{font-size:12.5px;color:var(--mut)}
+
+/* Pantalla inicial */
+#welcome{position:fixed;inset:0;z-index:60;background:radial-gradient(120% 70% at 50% 0,#2a2418 0,#0b0b0f 55%);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:calc(30px + var(--st)) 26px calc(30px + var(--sb));text-align:center}
+#welcome .logo{width:86px;height:86px;border-radius:22px;background:linear-gradient(145deg,#2b2b35,#15151b);display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(242,196,109,.35);box-shadow:0 10px 40px rgba(242,196,109,.15);margin-bottom:22px}
+#welcome h1{font-size:30px;margin:0 0 8px;letter-spacing:-.01em}
+#welcome h1 em{font-style:normal;color:var(--acc)}
+#welcome p{color:var(--mut);font-size:15px;line-height:1.5;margin:0 0 26px;max-width:340px}
+#welcome .btn{width:100%;max-width:340px;height:56px;font-size:17px;margin-bottom:10px}
+#welcome .warn{font-size:13px;color:#ffb4a8;background:rgba(255,59,48,.1);border-radius:12px;padding:10px 12px;max-width:340px;margin-bottom:14px;line-height:1.45}
+#welcome .priv{font-size:12px;color:var(--mut);margin-top:14px;max-width:320px;line-height:1.5}
+
+/* Diálogo y aviso */
+#dlg{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:30px}
+#dlg .box{background:#22222a;border-radius:18px;padding:20px;max-width:340px;width:100%;text-align:center}
+#dlg h3{margin:0 0 8px;font-size:18px}
+#dlg p{margin:0 0 18px;color:var(--mut);font-size:14.5px;line-height:1.45}
+#toast{position:fixed;left:50%;top:calc(14px + var(--st));transform:translateX(-50%);z-index:90;background:rgba(30,30,38,.96);border:1px solid var(--line);
+  padding:11px 16px;border-radius:14px;font-size:14px;max-width:90vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);transition:opacity .3s}
+#rot{position:fixed;inset:0;z-index:100;background:#0b0b0f;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mut)}
+@media (orientation:landscape) and (max-height:500px){#rot{display:flex}}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <div id="demoBg" class="hidden"><div id="demoTag">Modo prueba · sin cámara</div></div>
+    <video id="cam" playsinline muted autoplay></video>
+
+    <div id="prompter">
+      <div id="ptBg"></div>
+      <div id="ptView"><div id="ptText"></div></div>
+      <div id="guide"><i></i></div>
+      <div id="ptProg"></div>
+      <div id="ptHint">Tocá para pausar · arrastrá para mover</div>
+    </div>
+
+    <div id="recBadge" class="hidden"><b></b><span id="recTime">00:00</span></div>
+    <div id="countdown" class="hidden"><span>3</span></div>
+  </div>
+</div>
+
+<div id="controls">
+  <div id="quick">
+    <div class="chip"><button id="spdDn" aria-label="Más lento">−</button><span>Vel <b id="spdV">5</b></span><button id="spdUp" aria-label="Más rápido">+</button></div>
+    <div class="chip"><button id="fsDn" aria-label="Letra más chica" style="font-size:15px">A</button><span>Letra <b id="fsV">40</b></span><button id="fsUp" aria-label="Letra más grande" style="font-size:23px">A</button></div>
+  </div>
+  <div id="mainbar">
+    <div class="lbl"><button class="rb" id="scriptsBtn" aria-label="Guiones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg></button>Guiones</div>
+    <div class="lbl"><button class="rb" id="playBtn" aria-label="Iniciar o pausar texto"></button><span id="playLbl">Texto</span></div>
+    <button id="recBtn" aria-label="Grabar"><i></i></button>
+    <div class="lbl"><button class="rb" id="takesBtn" aria-label="Mis tomas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></svg></button>Tomas</div>
+    <div class="lbl"><button class="rb" id="setBtn" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg></button>Ajustes</div>
+  </div>
+</div>
+
+<!-- Pantalla de bienvenida -->
+<div id="welcome">
+  <div class="logo"><svg width="46" height="46" viewBox="0 0 48 48" fill="none"><rect x="9" y="12" width="30" height="3.4" rx="1.7" fill="#f2c46d"/><rect x="9" y="20" width="24" height="3.4" rx="1.7" fill="#fff" opacity=".9"/><rect x="9" y="28" width="28" height="3.4" rx="1.7" fill="#fff" opacity=".55"/><rect x="9" y="36" width="18" height="3.4" rx="1.7" fill="#fff" opacity=".3"/></svg></div>
+  <h1>Mi Teleprompter <em>Pro</em></h1>
+  <p>Leé tu guion mirando a cámara y grabá tus Reels en formato vertical 9:16.</p>
+  <div id="welWarn" class="warn hidden"></div>
+  <button class="btn pri" id="startCam">Activar cámara y micrófono</button>
+  <button class="btn" id="startDemo">Probar el teleprompter sin cámara</button>
+  <div class="priv">🔒 Tus videos y guiones quedan solo en este teléfono. Nada se envía a ningún servidor.</div>
+</div>
+
+<div id="rot">Girá el iPhone a vertical para usar el teleprompter.</div>
+<div id="toast" class="hidden"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); };
+const WPM = 150; // ritmo de lectura natural en español
+const words = t => (t.trim().match(/\S+/g) || []).length;
+
+/* ---------------- Ajustes ---------------- */
+const DEF = { speed:5, font:40, lh:1.45, align:'left', margin:6, pos:'top', height:38, bg:55, guide:true, flipText:false,
+  countdown:true, autoScroll:true, restart:true, mirrorRec:false, facing:'user' };
+const S = Object.assign({}, DEF, LS.get('mtp_settings', {}));
+const saveS = () => LS.set('mtp_settings', S);
+
+/* ---------------- Guiones ---------------- */
+const SAMPLE = [
+  { id:'s1', title:'Ejemplo · Captación de propietarios', text:
+`¿Estás pensando en vender tu departamento y no sabés cuánto vale hoy?
+
+Hola, soy [tu nombre], y todos los días ayudo a propietarios a vender su propiedad al mejor precio y en el menor tiempo posible.
+
+Antes de publicar, lo más importante es tener un valor correcto. Un precio fuera de mercado hace que tu propiedad pierda semanas… y compradores.
+
+Por eso te propongo algo simple: escribime por mensaje directo, coordinamos una visita y te preparo un análisis de mercado con propiedades comparables de tu zona.
+
+Escribime hoy y empecemos.` },
+  { id:'s2', title:'Ejemplo · Presentación de propiedad', text:
+`Te muestro este departamento de tres ambientes, luminoso, con balcón al frente.
+
+Tiene living comedor amplio, cocina integrada y dos dormitorios con placard.
+
+Está a pocas cuadras del subte, de comercios y de plazas.
+
+Si querés coordinar una visita, escribime por mensaje directo y te paso toda la información.` }
+];
+let scripts = LS.get('mtp_scripts', null);
+if (!Array.isArray(scripts) || !scripts.length) { scripts = SAMPLE.map(x => ({...x, updated: Date.now()})); }
+let activeId = LS.get('mtp_active', scripts[0].id);
+if (!scripts.find(s => s.id === activeId)) activeId = scripts[0].id;
+const saveScripts = () => { LS.set('mtp_scripts', scripts); LS.set('mtp_active', activeId); };
+const activeScript = () => scripts.find(s => s.id === activeId) || scripts[0];
+
+/* ---------------- Elementos ---------------- */
+const stage = $('#stage'), cam = $('#cam'), prompter = $('#prompter'), ptText = $('#ptText'), ptView = $('#ptView'),
+  ptBg = $('#ptBg'), guide = $('#guide'), ptProg = $('#ptProg'), ptHint = $('#ptHint');
+const recBtn = $('#recBtn'), playBtn = $('#playBtn');
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>';
+
+/* ---------------- Aviso ---------------- */
+let toastT;
+function toast(msg, ms = 3200){
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden'); t.style.opacity = 1;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.classList.add('hidden'), 300); }, ms);
+}
+function confirmDlg(title, text, okLabel = 'Aceptar', danger = false){
+  return new Promise(res => {
+    const d = document.createElement('div'); d.id = 'dlg';
+    d.innerHTML = `<div class="box"><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row2">
+      <button class="btn" data-r="0">Cancelar</button><button class="btn ${danger?'red':'pri'}" data-r="1">${esc(okLabel)}</button></div></div>`;
+    d.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b || e.target === d){ d.remove(); res(b && b.dataset.r === '1'); } });
+    document.body.appendChild(d);
+  });
+}
+
+/* ================= TELEPROMPTER ================= */
+let pos = 0, playing = false, lastTs = 0, maxPos = 0;
+function boxH(){ return prompter.clientHeight; }
+function layoutPrompter(){
+  const sh = stage.clientHeight;
+  const h = Math.round(sh * S.height / 100);
+  prompter.style.height = h + 'px';
+  let top = 0;
+  if (S.pos === 'center') top = Math.round((sh - h) / 2);
+  if (S.pos === 'bottom') top = Math.max(0, sh - h - Math.round(sh * 0.2));
+  prompter.style.top = top + 'px';
+  ptBg.style.opacity = S.bg / 100;
+  ptText.style.fontSize = S.font + 'px';
+  ptText.style.lineHeight = S.lh;
+  ptText.style.textAlign = S.align;
+  const mx = Math.round(stage.clientWidth * S.margin / 100) + 14;
+  ptText.style.paddingLeft = ptText.style.paddingRight = mx + 'px';
+  const readY = Math.round(h * 0.28);
+  ptText.style.paddingTop = readY + 'px';
+  ptText.style.paddingBottom = Math.round(h - readY) + 'px';
+  guide.style.top = (readY + S.font * S.lh * 0.5) + 'px';
+  guide.classList.toggle('hidden', !S.guide);
+  maxPos = Math.max(0, ptText.scrollHeight - h);
+  pos = Math.min(pos, maxPos);
+  applyPos();
+  $('#spdV').textContent = S.speed; $('#fsV').textContent = S.font;
+}
+function renderText(){
+  const sc = activeScript();
+  ptText.textContent = sc ? sc.text : '';
+  layoutPrompter();
+}
+function applyPos(){
+  const flip = S.flipText ? ' scaleX(-1)' : '';
+  ptText.style.transform = `translate3d(0,${-pos}px,0)${flip}`;
+  ptProg.style.width = (maxPos ? Math.min(100, pos / maxPos * 100) : 0) + '%';
+}
+function pxPerSec(){ return S.speed * 9 * (0.6 + S.font / 100); } // velocidad proporcional al tamaño de letra
+function tick(ts){
+  if (!playing) return;
+  if (lastTs) {
+    const dt = Math.min(0.1, (ts - lastTs) / 1000);
+    if (!dragging) pos += pxPerSec() * dt;
+    if (pos >= maxPos){ pos = maxPos; applyPos(); setPlaying(false); toast('Fin del guion'); return; }
+    applyPos();
+  }
+  lastTs = ts;
+  requestAnimationFrame(tick);
+}
+function setPlaying(v){
+  if (v && pos >= maxPos) pos = 0;
+  playing = v; lastTs = 0;
+  playBtn.innerHTML = v ? ICON_PAUSE : ICON_PLAY;
+  $('#playLbl').textContent = v ? 'Pausar' : 'Texto';
+  if (v) { requestAnimationFrame(tick); ptHint.style.opacity = 0; }
+}
+playBtn.addEventListener('click', () => setPlaying(!playing));
+
+// Tocar = pausa/reanudar · Arrastrar = mover el texto
+let dragging = false, dStartY = 0, dStartPos = 0, moved = false;
+prompter.addEventListener('pointerdown', e => { dragging = true; moved = false; dStartY = e.clientY; dStartPos = pos; prompter.setPointerCapture(e.pointerId); });
+prompter.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dy = e.clientY - dStartY;
+  if (Math.abs(dy) > 6) moved = true;
+  if (moved){ pos = Math.max(0, Math.min(maxPos, dStartPos - dy)); applyPos(); }
+});
+const endDrag = () => { if (!dragging) return; dragging = false; if (!moved) setPlaying(!playing); lastTs = 0; };
+prompter.addEventListener('pointerup', endDrag);
+prompter.addEventListener('pointercancel', () => { dragging = false; });
+
+function changeSpeed(d){ S.speed = Math.max(1, Math.min(20, Math.round((S.speed + d) * 2) / 2)); $('#spdV').textContent = S.speed; saveS(); syncSettingsUI(); }
+function changeFont(d){ S.font = Math.max(20, Math.min(90, S.font + d)); saveS(); layoutPrompter(); syncSettingsUI(); }
+$('#spdUp').onclick = () => changeSpeed(0.5);
+$('#spdDn').onclick = () => changeSpeed(-0.5);
+$('#fsUp').onclick = () => changeFont(2);
+$('#fsDn').onclick = () => changeFont(-2);
+
+/* ================= CÁMARA ================= */
+let camStream = null, camOn = false, demo = false, wakeLock = null;
+const canUseCam = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const canRecord = () => typeof window.MediaRecorder !== 'undefined';
+
+async function getStream(facing){
+  const audio = { echoCancellation:true, noiseSuppression:true, autoGainControl:true };
+  const tries = [
+    { width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30, max:30} },
+    { width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30, max:30} },
+    {}
+  ];
+  let last;
+  for (const v of tries){
+    try { return await navigator.mediaDevices.getUserMedia({ video:{ facingMode:facing, ...v }, audio }); }
+    catch(e){ last = e; if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) break; }
+  }
+  throw last;
+}
+async function startCamera(){
+  stopCamera();
+  const s = await getStream(S.facing);
+  camStream = s; cam.srcObject = s; cam.muted = true;
+  cam.classList.toggle('mirror', S.facing === 'user');
+  try { await cam.play(); } catch(e){}
+  await new Promise(r => { if (cam.videoWidth) r(); else cam.onloadedmetadata = () => r(); setTimeout(r, 2500); });
+  camOn = true; demo = false;
+  $('#demoBg').classList.add('hidden'); cam.classList.remove('hidden');
+  s.getVideoTracks().forEach(t => t.addEventListener('ended', () => { camOn = false; }));
+  requestWake();
+  syncSettingsUI();
+}
+function stopCamera(){
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null; camOn = false;
+}
+async function requestWake(){
+  try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+}
+function camResText(){
+  if (!camOn || !cam.videoWidth) return '—';
+  return cam.videoWidth + ' × ' + cam.videoHeight;
+}
+
+function camErrorMsg(e){
+  const n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'SecurityError')
+    return 'Safari no dio permiso a la cámara. Andá a Ajustes del iPhone › Apps › Safari › Cámara y Micrófono › "Preguntar" o "Permitir", y volvé a intentar.';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'No se encontró una cámara disponible en este dispositivo.';
+  if (n === 'NotReadableError') return 'La cámara está siendo usada por otra app. Cerrala y volvé a intentar.';
+  return 'No se pudo abrir la cámara (' + (n || 'error') + ').';
+}
+function inFrame(){ try { return window.self !== window.top; } catch(e){ return true; } }
+function envProblem(){
+  if (inFrame()) return 'Estás en una vista previa: acá la cámara está bloqueada. Probá el texto con “Probar sin cámara”. Para grabar, abrí la app desde tu dirección publicada en Safari.';
+  if (!window.isSecureContext) return 'Para usar la cámara la app tiene que abrirse desde una dirección https:// (por ejemplo GitHub Pages).';
+  if (!canUseCam()) return 'Este navegador no permite usar la cámara aquí. Si estás en una vista previa, abrí la app publicada en Safari.';
+  return '';
+}
+$('#startCam').addEventListener('click', async () => {
+  const p = envProblem();
+  if (p){ showWarn(p); return; }
+  $('#startCam').textContent = 'Abriendo cámara…';
+  try { await startCamera(); $('#welcome').classList.add('hidden'); toast('Listo. Tocá el botón rojo para grabar.'); }
+  catch(e){ showWarn(camErrorMsg(e)); }
+  $('#startCam').textContent = 'Activar cámara y micrófono';
+});
+$('#startDemo').addEventListener('click', () => {
+  demo = true; $('#welcome').classList.add('hidden'); $('#demoBg').classList.remove('hidden'); cam.classList.add('hidden');
+  toast('Modo prueba: el texto funciona; para grabar, activá la cámara.', 3800);
+});
+function showWarn(t){ const w = $('#welWarn'); w.textContent = t; w.classList.remove('hidden'); }
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'hidden'){
+    if (rec && rec.state === 'recording') stopRecording();
+    setPlaying(false);
+  } else {
+    requestWake();
+    const dead = camStream && camStream.getTracks().some(t => t.readyState === 'ended');
+    if ((camOn || dead) && !demo){ try { await startCamera(); } catch(e){ toast('Tocá “Ajustes › Reiniciar cámara” si la imagen no vuelve.'); } }
+  }
+});
+
+/* ================= GRABACIÓN ================= */
+let rec = null, chunks = [], recStart = 0, recTimer = null, recMime = '', drawRaf = 0, canvasEl = null, recInfo = {};
+function pickMime(){
+  const c = ['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  for (const m of c){ try { if (MediaRecorder.isTypeSupported(m)) return m; } catch(e){} }
+  return '';
+}
+function buildRecordStream(){
+  const vw = cam.videoWidth, vh = cam.videoHeight;
+  const ratio = vw / vh, target = 9/16;
+  const needCrop = Math.abs(ratio - target) > 0.012;
+  const needMirror = S.mirrorRec && S.facing === 'user';
+  const canCanvas = typeof HTMLCanvasElement.prototype.captureStream === 'function';
+  if ((!needCrop && !needMirror) || !canCanvas){
+    recInfo = { w:vw, h:vh, mode:'directo' };
+    return camStream;
+  }
+  // Recorte central exacto a 9:16 (sin estirar ni agrandar)
+  let cw, ch;
+  if (ratio > target){ ch = vh; cw = vh * target; } else { cw = vw; ch = vw / target; }
+  let ow = Math.min(1080, Math.round(cw)); ow -= ow % 2;
+  let oh = Math.round(ow * 16 / 9); oh -= oh % 2;
+  const sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+  if (!canvasEl){
+    canvasEl = document.createElement('canvas');
+    canvasEl.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.appendChild(canvasEl);
+  }
+  canvasEl.width = ow; canvasEl.height = oh;
+  const ctx = canvasEl.getContext('2d', { alpha:false });
+  const draw = () => {
+    ctx.setTransform(needMirror ? -1 : 1, 0, 0, 1, needMirror ? ow : 0, 0);
+    ctx.drawImage(cam, sx, sy, cw, ch, 0, 0, ow, oh);
+    drawRaf = requestAnimationFrame(draw);
+  };
+  draw();
+  const vs = canvasEl.captureStream(30);
+  recInfo = { w:ow, h:oh, mode:'recorte 9:16' };
+  return new MediaStream([...vs.getVideoTracks(), ...camStream.getAudioTracks()]);
+}
+async function startRecording(){
+  if (demo || !camOn){
+    if (demo){ toast('En modo prueba no se puede grabar. Activá la cámara desde la app publicada.', 4200); }
+    else toast('Activá la cámara primero.');
+    return;
+  }
+  if (!canRecord()){ toast('Tu versión de Safari no permite grabar video. Actualizá iOS (14.3 o superior).', 4500); return; }
+  recBtn.disabled = true;
+  if (S.restart){ pos = 0; applyPos(); }
+  setPlaying(false);
+  if (S.countdown) await countdown();
+  let stream;
+  try { stream = buildRecordStream(); } catch(e){ stream = camStream; recInfo = { w:cam.videoWidth, h:cam.videoHeight, mode:'directo' }; }
+  recMime = pickMime();
+  const opts = { videoBitsPerSecond: recInfo.h >= 1600 ? 10_000_000 : 6_000_000, audioBitsPerSecond: 128_000 };
+  if (recMime) opts.mimeType = recMime;
+  chunks = [];
+  try { rec = new MediaRecorder(stream, opts); }
+  catch(e){ try { rec = new MediaRecorder(stream); } catch(e2){ recBtn.disabled = false; toast('No se pudo iniciar la grabación: ' + e2.message); return; } }
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = onRecStop;
+  rec.start(1000);
+  recStart = Date.now();
+  recBtn.classList.add('on'); recBtn.disabled = false; recBtn.setAttribute('aria-label','Detener');
+  $('#recBadge').classList.remove('hidden'); positionBadge();
+  recTimer = setInterval(() => { $('#recTime').textContent = fmtTime((Date.now() - recStart) / 1000); }, 250);
+  ['#scriptsBtn','#takesBtn','#setBtn'].forEach(s => $(s).parentElement.classList.add('dim'));
+  if (S.autoScroll) setPlaying(true);
+}
+function stopRecording(){
+  if (!rec || rec.state === 'inactive') return;
+  recInfo.dur = (Date.now() - recStart) / 1000;
+  try { rec.requestData(); } catch(e){}
+  rec.stop();
+  setPlaying(false);
+  clearInterval(recTimer); cancelAnimationFrame(drawRaf);
+  recBtn.classList.remove('on'); recBtn.setAttribute('aria-label','Grabar');
+  $('#recBadge').classList.add('hidden'); $('#recTime').textContent = '00:00';
+  ['#scriptsBtn','#takesBtn','#setBtn'].forEach(s => $(s).parentElement.classList.remove('dim'));
+}
+async function onRecStop(){
+  const type = (rec && rec.mimeType) || recMime || 'video/mp4';
+  const blob = new Blob(chunks, { type: type.split(';')[0] });
+  chunks = [];
+  if (!blob.size){ toast('La grabación quedó vacía. Probá de nuevo.'); return; }
+  const take = { id: 't' + Date.now(), created: Date.now(), blob, mime: blob.type, dur: recInfo.dur || 0, w: recInfo.w, h: recInfo.h, title: (activeScript()||{}).title || 'Video' };
+  await dbPut(take);
+  openResult(take, true);
+}
+function countdown(){
+  return new Promise(res => {
+    const cd = $('#countdown'), sp = cd.querySelector('span');
+    let n = 3; cd.classList.remove('hidden');
+    const step = () => {
+      if (n === 0){ cd.classList.add('hidden'); res(); return; }
+      sp.textContent = n; sp.style.animation = 'none'; void sp.offsetWidth; sp.style.animation = '';
+      n--; setTimeout(step, 1000);
+    };
+    step();
+  });
+}
+function positionBadge(){
+  const b = $('#recBadge');
+  if (S.pos === 'top'){ b.style.top = ''; b.style.bottom = '160px'; } else { b.style.bottom = ''; b.style.top = '12px'; }
+}
+recBtn.addEventListener('click', () => { if (rec && rec.state === 'recording') stopRecording(); else if (!recBtn.disabled) startRecording(); });
+
+/* ================= TOMAS (IndexedDB, solo en el dispositivo) ================= */
+let db = null; const memTakes = [];
+function openDB(){
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('mi-teleprompter', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('takes', { keyPath:'id' });
+      r.onsuccess = () => { db = r.result; res(db); };
+      r.onerror = () => res(null);
+    } catch(e){ res(null); }
+  });
+}
+function tx(mode){ return db.transaction('takes', mode).objectStore('takes'); }
+async function dbPut(t){
+  memTakes.unshift(t);
+  if (!db) return;
+  try { await new Promise((ok, ko) => { const q = tx('readwrite').put(t); q.onsuccess = ok; q.onerror = () => ko(q.error); }); }
+  catch(e){ toast('No hay espacio para guardar la toma en la app. Guardala en Fotos ahora.', 4500); }
+}
+async function dbAll(){
+  if (!db) return memTakes.slice();
+  try { return await new Promise((ok, ko) => { const q = tx('readonly').getAll(); q.onsuccess = () => ok(q.result.sort((a,b) => b.created - a.created)); q.onerror = () => ko(q.error); }); }
+  catch(e){ return memTakes.slice(); }
+}
+async function dbDel(id){
+  const i = memTakes.findIndex(t => t.id === id); if (i >= 0) memTakes.splice(i, 1);
+  if (!db) return;
+  try { await new Promise(ok => { const q = tx('readwrite').delete(id); q.onsuccess = ok; q.onerror = ok; }); } catch(e){}
+}
+const fileName = t => {
+  const d = new Date(t.created), p = n => String(n).padStart(2,'0');
+  const ext = /mp4|quicktime/.test(t.mime) ? 'mp4' : 'webm';
+  return `MiTeleprompter_${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
+};
+const fmtSize = b => b > 1048576 ? (b/1048576).toFixed(1) + ' MB' : Math.round(b/1024) + ' KB';
+const fmtDate = ts => new Date(ts).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+async function saveToPhone(t){
+  const file = new File([t.blob], fileName(t), { type: t.mime || 'video/mp4' });
+  if (navigator.canShare && navigator.share){
+    try {
+      if (navigator.canShare({ files:[file] })){
+        await navigator.share({ files:[file] });
+        return;
+      }
+    } catch(e){ if (e && e.name === 'AbortError') return; }
+  }
+  downloadFile(t);
+}
+function downloadFile(t){
+  const url = URL.createObjectURL(t.blob);
+  const a = document.createElement('a'); a.href = url; a.download = fileName(t);
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  toast('Descargado en Archivos › Descargas.', 3500);
+}
+
+/* ================= HOJAS ================= */
+function openSheet(title, bodyHTML, onMount, opts = {}){
+  const w = document.createElement('div'); w.className = 'sheetWrap';
+  w.innerHTML = `<div class="sheet" style="${opts.tall ? 'height:88dvh' : ''}"><div class="sh-head"><h2>${title}</h2><button class="x" aria-label="Cerrar">✕</button></div><div class="sh-body">${bodyHTML}</div></div>`;
+  const close = () => { w.remove(); if (opts.onClose) opts.onClose(); };
+  w.querySelector('.x').onclick = close;
+  w.addEventListener('click', e => { if (e.target === w && !opts.modal) close(); });
+  document.body.appendChild(w);
+  if (onMount) onMount(w, close);
+  return close;
+}
+
+/* ---- Resultado de una toma ---- */
+function openResult(t, fresh){
+  const url = URL.createObjectURL(t.blob);
+  const share = !!(navigator.canShare && navigator.share);
+  openSheet(fresh ? '¡Video grabado!' : 'Toma', `
+    <video id="resVideo" src="${url}" playsinline controls preload="metadata"></video>
+    <div class="meta">${fmtTime(t.dur)} · ${t.w}×${t.h} · ${fmtSize(t.blob.size)} · ${(t.mime||'').replace('video/','').toUpperCase()}</div>
+    <button class="btn pri full" id="rSave">${share ? '⬇︎ Guardar en Fotos / Compartir' : '⬇︎ Descargar video'}</button>
+    ${share ? '<div class="note" style="text-align:center">En el menú que aparece, elegí <b>“Guardar video”</b> para que quede en la app Fotos.</div>' : ''}
+    <div class="${share ? 'row2' : ''}" style="margin-top:${share?0:10}px">
+      ${share ? '<button class="btn" id="rDl">Guardar en Archivos</button>' : ''}
+      <button class="btn red ${share ? '' : 'full'}" id="rDel">Eliminar</button>
+    </div>
+    ${fresh ? '<button class="btn full" id="rAgain" style="margin-top:10px">Grabar otra toma</button>' : ''}
+    <div class="note" style="margin-top:14px">La toma también queda en <b>Tomas</b> dentro de esta app hasta que la elimines. Guardala en Fotos para tenerla segura: iOS puede borrar los datos de las webs que no usás por varias semanas.</div>
+  `, (w, close) => {
+    w.querySelector('#rSave').onclick = () => saveToPhone(t);
+    const dl = w.querySelector('#rDl'); if (dl) dl.onclick = () => downloadFile(t);
+    w.querySelector('#rDel').onclick = async () => { if (await confirmDlg('¿Eliminar esta toma?', 'Se borra de la app. Si ya la guardaste en Fotos, ahí sigue estando.', 'Eliminar', true)){ await dbDel(t.id); close(); toast('Toma eliminada'); } };
+    const ag = w.querySelector('#rAgain'); if (ag) ag.onclick = close;
+  }, { onClose: () => URL.revokeObjectURL(url) });
+}
+
+/* ---- Lista de tomas ---- */
+$('#takesBtn').onclick = async () => {
+  const list = await dbAll();
+  const body = list.length ? list.map(t => `
+    <div class="take" data-id="${t.id}"><div class="i"><div class="t">${esc(t.title)}</div>
+    <div class="p">${fmtDate(t.created)} · ${fmtTime(t.dur)} · ${fmtSize(t.blob.size)}</div></div>
+    <button class="ib" data-a="open" aria-label="Ver"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg></button></div>`).join('')
+    : '<div class="note" style="text-align:center;padding:30px 0">Todavía no grabaste ninguna toma.</div>';
+  openSheet('Mis tomas', body + '<div class="note">Las tomas se guardan solo en este iPhone, dentro de la app.</div>', (w, close) => {
+    w.querySelectorAll('.take').forEach(el => el.onclick = () => { const t = list.find(x => x.id === el.dataset.id); close(); openResult(t, false); });
+  });
+};
+
+/* ---- Guiones ---- */
+function scriptMeta(s){ const n = words(s.text); return `${n} palabras · ≈ ${fmtTime(n / WPM * 60)} min`; }
+function openScripts(){
+  const body = () => scripts.map(s => `
+    <div class="scr ${s.id === activeId ? 'act' : ''}" data-id="${s.id}">
+      <div class="i"><div class="t">${esc(s.title || 'Sin título')}</div><div class="p">${esc(s.text.slice(0, 90).replace(/\s+/g,' '))}</div><div class="m">${s.id === activeId ? '● En uso · ' : ''}${scriptMeta(s)}</div></div>
+      <button class="ib" data-a="edit" aria-label="Editar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
+    </div>`).join('') + `<button class="btn pri full" id="newScr" style="margin-top:6px">＋ Nuevo guion</button>
+    <div class="note" style="margin-top:12px">Tocá un guion para usarlo. Se guardan solo en este iPhone. Duración estimada a ${WPM} palabras por minuto.</div>`;
+  openSheet('Mis guiones', body(), (w, close) => {
+    const bind = () => {
+      w.querySelectorAll('.scr').forEach(el => el.onclick = e => {
+        const id = el.dataset.id;
+        if (e.target.closest('[data-a=edit]')){ close(); openEditor(id); return; }
+        activeId = id; saveScripts(); pos = 0; renderText(); close(); toast('Guion seleccionado');
+      });
+      w.querySelector('#newScr').onclick = () => { close(); openEditor(null); };
+    };
+    bind();
+  });
+}
+$('#scriptsBtn').onclick = openScripts;
+
+function openEditor(id){
+  const s = id ? scripts.find(x => x.id === id) : { id:null, title:'', text:'' };
+  openSheet(id ? 'Editar guion' : 'Nuevo guion', `
+    <input id="edTitle" placeholder="Título del guion" value="${esc(s.title)}" maxlength="80">
+    <textarea id="edText" placeholder="Pegá o escribí tu guion acá…">${esc(s.text)}</textarea>
+    <div class="edbar">
+      <button class="btn" id="edPaste">📋 Pegar</button>
+      <button class="btn" id="edCopy">Copiar</button>
+      ${id ? '<button class="btn" id="edDup">Duplicar</button><button class="btn red" id="edDel">Eliminar</button>' : ''}
+      <span id="edStats"></span>
+    </div>
+    <div class="row2"><button class="btn" id="edCancel">Cancelar</button><button class="btn pri" id="edSave">Guardar y usar</button></div>
+  `, (w, close) => {
+    const ti = w.querySelector('#edTitle'), tx_ = w.querySelector('#edText'), st = w.querySelector('#edStats');
+    const upd = () => { st.textContent = scriptMeta({ text: tx_.value }); };
+    tx_.addEventListener('input', upd); upd();
+    w.querySelector('#edPaste').onclick = async () => {
+      try { const t = await navigator.clipboard.readText(); if (t){ const a = tx_.selectionStart, b = tx_.selectionEnd; tx_.value = tx_.value.slice(0,a) + t + tx_.value.slice(b); upd(); toast('Texto pegado'); } }
+      catch(e){ tx_.focus(); toast('Mantené presionado dentro del cuadro y elegí “Pegar”.'); }
+    };
+    w.querySelector('#edCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(tx_.value); toast('Guion copiado'); }
+      catch(e){ tx_.focus(); tx_.select(); toast('Texto seleccionado: tocá “Copiar”.'); }
+    };
+    const dup = w.querySelector('#edDup');
+    if (dup) dup.onclick = () => { const n = { id:'s' + Date.now(), title:(ti.value || 'Guion') + ' (copia)', text:tx_.value, updated:Date.now() }; scripts.unshift(n); activeId = n.id; saveScripts(); renderText(); close(); toast('Guion duplicado'); };
+    const del = w.querySelector('#edDel');
+    if (del) del.onclick = async () => {
+      if (scripts.length <= 1){ toast('Tiene que quedar al menos un guion.'); return; }
+      if (await confirmDlg('¿Eliminar el guion?', 'Esta acción no se puede deshacer.', 'Eliminar', true)){
+        scripts = scripts.filter(x => x.id !== id); if (activeId === id) activeId = scripts[0].id; saveScripts(); renderText(); close(); toast('Guion eliminado');
+      }
+    };
+    w.querySelector('#edCancel').onclick = close;
+    w.querySelector('#edSave').onclick = () => {
+      const title = ti.value.trim() || 'Guion sin título', text = tx_.value;
+      if (!text.trim()){ toast('El guion está vacío.'); return; }
+      if (id){ Object.assign(s, { title, text, updated:Date.now() }); }
+      else { const n = { id:'s' + Date.now(), title, text, updated:Date.now() }; scripts.unshift(n); activeId = n.id; }
+      if (id) activeId = id;
+      saveScripts(); pos = 0; renderText(); close(); toast('Guion guardado');
+    };
+  }, { tall:true, modal:true });
+}
+
+/* ---- Ajustes ---- */
+function rangeRow(key, label, min, max, step, unit = ''){
+  return `<div class="set col"><div><label>${label}</label><span class="v" data-v="${key}">${S[key]}${unit}</span></div>
+    <input type="range" data-k="${key}" data-u="${unit}" min="${min}" max="${max}" step="${step}" value="${S[key]}"></div>`;
+}
+function segRow(key, label, opts){
+  return `<div class="set"><label>${label}</label><div class="seg" data-k="${key}">${opts.map(([v,t]) => `<button data-val="${v}" class="${S[key]===v?'on':''}">${t}</button>`).join('')}</div></div>`;
+}
+function tgRow(key, label){
+  return `<div class="set"><label>${label}</label><label class="tg"><input type="checkbox" data-k="${key}" ${S[key]?'checked':''}><span></span></label></div>`;
+}
+let settingsSheet = null;
+function syncSettingsUI(){
+  if (!settingsSheet) return;
+  settingsSheet.querySelectorAll('input[type=range]').forEach(r => { r.value = S[r.dataset.k]; });
+  settingsSheet.querySelectorAll('[data-v]').forEach(v => { const r = settingsSheet.querySelector(`input[data-k="${v.dataset.v}"]`); v.textContent = S[v.dataset.v] + (r ? r.dataset.u : ''); });
+  const ri = settingsSheet.querySelector('#resInfo'); if (ri) ri.textContent = camResText();
+}
+$('#setBtn').onclick = () => {
+  const mime = canRecord() ? (pickMime() || 'predeterminado') : 'no disponible';
+  openSheet('Ajustes', `
+    <div class="grp"><h3>Texto</h3>
+      ${rangeRow('speed','Velocidad',1,20,0.5)}
+      ${rangeRow('font','Tamaño de letra',20,90,1,' px')}
+      ${rangeRow('lh','Interlineado',1.1,2.2,0.05)}
+      ${rangeRow('margin','Márgenes laterales',0,25,1,' %')}
+      ${segRow('align','Alineación',[['left','Izquierda'],['center','Centro']])}
+      ${tgRow('flipText','Texto espejado (para vidrio de teleprompter)')}
+    </div>
+    <div class="grp"><h3>Zona de lectura</h3>
+      ${segRow('pos','Posición',[['top','Arriba'],['center','Medio'],['bottom','Abajo']])}
+      <div class="note" style="margin:0 2px 6px">“Arriba” deja el texto pegado a la cámara frontal: es lo que menos se nota al leer.</div>
+      ${rangeRow('height','Alto de la zona',18,70,1,' %')}
+      ${rangeRow('bg','Oscurecer fondo',0,90,5,' %')}
+      ${tgRow('guide','Línea guía de lectura')}
+    </div>
+    <div class="grp"><h3>Grabación</h3>
+      ${tgRow('countdown','Cuenta regresiva de 3 s')}
+      ${tgRow('autoScroll','Iniciar el texto al grabar')}
+      ${tgRow('restart','Volver al principio al grabar')}
+      ${tgRow('mirrorRec','Grabar en espejo (como te ves)')}
+      ${segRow('facing','Cámara',[['user','Frontal'],['environment','Trasera']])}
+      <div class="set"><label>Resolución de la cámara</label><span class="v" id="resInfo">${camResText()}</span></div>
+      <div class="set"><label>Formato de video</label><span class="v">${esc(mime.split(';')[0].replace('video/','').toUpperCase())}</span></div>
+      <div class="set"><button class="btn full" id="restartCam">Reiniciar cámara</button></div>
+    </div>
+    <div class="note">El texto del teleprompter <b>nunca aparece en el video</b>: se graba solo la imagen de la cámara y tu voz. El video sale en vertical 9:16, a la máxima resolución que entregue la cámara (hasta 1080 × 1920).</div>
+    <button class="btn full" id="resetSet">Restablecer ajustes</button>
+  `, (w) => {
+    settingsSheet = w;
+    w.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', () => {
+      S[r.dataset.k] = parseFloat(r.value); saveS(); layoutPrompter(); syncSettingsUI();
+    }));
+    w.querySelectorAll('.seg').forEach(sg => sg.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const k = sg.dataset.k; S[k] = b.dataset.val; saveS();
+      sg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      layoutPrompter(); positionBadge();
+      if (k === 'facing' && camOn){ try { await startCamera(); } catch(err){ toast(camErrorMsg(err)); } }
+    }));
+    w.querySelectorAll('.tg input').forEach(c => c.addEventListener('change', () => { S[c.dataset.k] = c.checked; saveS(); layoutPrompter(); }));
+    w.querySelector('#restartCam').onclick = async () => {
+      if (demo){ toast('Estás en modo prueba. Recargá la página para activar la cámara.'); return; }
+      try { await startCamera(); toast('Cámara reiniciada'); } catch(e){ toast(camErrorMsg(e), 5000); }
+    };
+    w.querySelector('#resetSet').onclick = () => { const f = S.facing; Object.assign(S, DEF, { facing:f }); saveS(); layoutPrompter(); w.querySelector('.x').click(); toast('Ajustes restablecidos'); };
+  }, { onClose: () => { settingsSheet = null; } });
+};
+
+/* Ícono para la pantalla de inicio (se dibuja en el teléfono, sin archivos externos) */
+(function makeIcon(){
+  try {
+    const n = 180, c = document.createElement('canvas'); c.width = c.height = n;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, n); g.addColorStop(0, '#2a2418'); g.addColorStop(1, '#0b0b0f');
+    x.fillStyle = g; x.fillRect(0, 0, n, n);
+    const bars = [[0.62,'#f2c46d'],[0.50,'#ffffff'],[0.58,'#c8c8ce'],[0.38,'#8c8c94']];
+    let y = 0.27 * n; const h = 0.075 * n;
+    for (const [w, col] of bars){
+      x.fillStyle = col; x.beginPath();
+      if (x.roundRect) x.roundRect(0.22 * n, y, w * n, h, h / 2); else x.rect(0.22 * n, y, w * n, h);
+      x.fill(); y += h + 0.055 * n;
+    }
+    x.fillStyle = '#ff3b30'; x.beginPath(); x.arc(0.74 * n, 0.76 * n, 0.07 * n, 0, Math.PI * 2); x.fill();
+    const url = c.toDataURL('image/png');
+    for (const rel of ['apple-touch-icon', 'icon']){
+      const l = document.createElement('link'); l.rel = rel; l.href = url; document.head.appendChild(l);
+    }
+  } catch(e){}
+})();
+
+/* ================= INICIO ================= */
+window.addEventListener('resize', () => layoutPrompter());
+if (window.visualViewport) visualViewport.addEventListener('resize', () => layoutPrompter());
+setPlaying(false);
+renderText();
+positionBadge();
+openDB();
+const p = envProblem(); if (p) showWarn(p);
+if ('serviceWorker' in navigator && location.protocol === 'https:'){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+window.__mtp = { S, get pos(){ return pos; }, get maxPos(){ return maxPos; }, startRecording, stopRecording, dbAll };
+})();
+</script>
+</body>
+</html>
